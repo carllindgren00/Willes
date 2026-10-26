@@ -201,7 +201,7 @@
     <p class="muted" style="margin:0 0 10px">Alla ej fakturerade följesedlar samlade, att lägga in i Fortnox. Markera dem som fakturerade när fakturan är skickad.</p>
     <div class="acts">
       <button class="btn" onclick="exportCSV()">Ladda ner Excel</button>
-      <button class="btn" onclick="printOpen()">PDF med alla</button>
+      <button class="btn" onclick="printOpen()">Skriv ut / PDF alla</button>
     </div>
   </section>
 </main>
@@ -365,7 +365,7 @@ function renderList(){
       <div class="acts">
         <button onclick="toggleFakt('${f.id}')">${f.fakturerad?"Ångra fakturerad":"Markera fakturerad"}</button>
         <button onclick="edit('${f.id}')">Ändra</button>
-        <button onclick="printOne('${f.id}')">PDF</button>
+        <button onclick="printOne('${f.id}')">Skriv ut / PDF</button>
         <button class="${delArmed===f.id?"danger":""}" onclick="del('${f.id}')">${delArmed===f.id?"Tryck igen för att ta bort":"Ta bort"}</button>
       </div>
     </div>`).join(""):`<p class="muted">${filter==="open"?"Inga ej fakturerade följesedlar.":"Inga följesedlar än."}</p>`;
@@ -419,7 +419,7 @@ async function printSlips(a){
   const doc=makePDF(a), name=a.length===1?`foljesedel-${a[0].nr}.pdf`:`foljesedlar-${today()}.pdf`;
   if(PREVIEW){ toast("PDF:en skapas i riktiga appen"); return; }
   const file=new File([doc.output("blob")],name,{type:"application/pdf"});
-  try{ if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file],title:name}); return; } }catch(e){ if(e.name==="AbortError") return; }
+  try{ if(navigator.canShare && navigator.canShare({files:[file]})){ toast("Välj Skriv ut i menyn"); await navigator.share({files:[file],title:name}); return; } }catch(e){ if(e.name==="AbortError") return; }
   const u=URL.createObjectURL(file), l=document.createElement("a"); l.href=u; l.download=name; document.body.appendChild(l); l.click(); l.remove(); setTimeout(()=>URL.revokeObjectURL(u),5000);
 }
 function printOne(id){ const f=load().find(x=>x.id===id); if(f) printSlips([f]); }
