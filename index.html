@@ -112,6 +112,7 @@
     #print table{width:100%;border-collapse:collapse}
     #print td{padding:6px;border-bottom:1px solid #ccc;vertical-align:top}
     #print td:first-child{width:32%;color:#444}
+    #print .pg{page-break-after:always} #print .pg:last-child{page-break-after:auto}
     #print .sigimg{height:28mm;border-bottom:1px solid #000}
     @page{size:A4;margin:0}
   }
@@ -200,7 +201,7 @@
     <p class="muted" style="margin:0 0 10px">Alla ej fakturerade följesedlar samlade, att lägga in i Fortnox. Markera dem som fakturerade när fakturan är skickad.</p>
     <div class="acts">
       <button class="btn" onclick="exportCSV()">Ladda ner Excel</button>
-      <button class="btn" onclick="printOpen()">Skriv ut alla</button>
+      <button class="btn" onclick="printOpen()">PDF med alla</button>
     </div>
   </section>
 </main>
@@ -236,6 +237,7 @@
 <div id="print"></div>
 <div class="toast" id="toast" role="status"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 const PREVIEW = /*PREVIEW*/false;
 const KEY="willes_foljesedlar_v1", VALKEY="willes_snabbval_v1", SETKEY="willes_installningar_v1";
@@ -363,7 +365,7 @@ function renderList(){
       <div class="acts">
         <button onclick="toggleFakt('${f.id}')">${f.fakturerad?"Ångra fakturerad":"Markera fakturerad"}</button>
         <button onclick="edit('${f.id}')">Ändra</button>
-        <button onclick="printOne('${f.id}')">Skriv ut</button>
+        <button onclick="printOne('${f.id}')">PDF</button>
         <button class="${delArmed===f.id?"danger":""}" onclick="del('${f.id}')">${delArmed===f.id?"Tryck igen för att ta bort":"Ta bort"}</button>
       </div>
     </div>`).join(""):`<p class="muted">${filter==="open"?"Inga ej fakturerade följesedlar.":"Inga följesedlar än."}</p>`;
@@ -379,12 +381,47 @@ function toggleFakt(id){ const a=load(), f=a.find(x=>x.id===id); f.fakturerad=!f
 const BILTXT={med:"Med bärgningsbil",utan:"Arbetstid"};
 function slip(f){
   const r=(k,v)=>v?`<tr><td>${k}</td><td>${esc(v).replace(/\n/g,"<br>")}</td></tr>`:"";
-  return `<div style="page-break-after:always"><div class="top"><img src="${$("logo").src}"><div style="text-align:right"><h1>Följesedel</h1><div>Nr <b>${f.nr}</b></div><div>${f.datum}</div></div></div>
+  return `<div class="pg"><div class="top"><img src="${$("logo").src}"><div style="text-align:right"><h1>Följesedel</h1><div>Nr <b>${f.nr}</b></div><div>${f.datum}</div></div></div>
   <table>${r("Utfört arbete",(f.jobb||[]).join(", "))}${r("Tid",f.tid?f.tid+(f.bil?(f.bil==="med"?" · med bärgningsbil":" · arbetstid"):""):"")}${r("Kund",f.kund)}${r("Telefon",f.tel)}${r("Regnummer",f.regnr)}${r("Plats / sträcka",f.plats)}${r("Anteckning",f.text)}${r("Pris exkl. moms",f.pris?f.pris+" kr":"")}${r("Betalning",f.betalt||"Faktureras")}</table>
   ${f.sig?`<p style="margin-top:20px">Kundens signatur</p><img class="sigimg" src="${f.sig}">`:""}
   <p style="margin-top:24px;color:#666;font-size:10pt">Willes Bilbärgning · Underlag för fakturering</p></div>`;
 }
-function printSlips(a){ if(PREVIEW){ toast("Utskrift fungerar i riktiga appen"); return; } $("print").innerHTML=a.map(slip).join(""); setTimeout(()=>print(),300); }
+function pdfText(t){ return String(t??"").replace(/→/g,"->").replace(/[^\x00-\xFF–—…•€]/g,""); }
+function makePDF(a){
+  const { jsPDF } = window.jspdf; const doc=new jsPDF({unit:"mm",format:"a4"});
+  const L=18, Rt=192, W=Rt-L, logo=$("logo"), lw=48, lh=lw*logo.naturalHeight/logo.naturalWidth;
+  a.forEach((f,i)=>{
+    if(i) doc.addPage();
+    let y=16;
+    try{ doc.addImage(logo.src,"PNG",L,y,lw,lh); }catch(e){}
+    doc.setFont("helvetica","bold"); doc.setFontSize(22); doc.setTextColor(0); doc.text("Följesedel",Rt,y+9,{align:"right"});
+    doc.setFontSize(12); doc.text("Nr "+f.nr,Rt,y+16,{align:"right"});
+    doc.setFont("helvetica","normal"); doc.text(f.datum,Rt,y+22,{align:"right"});
+    y+=Math.max(lh,24)+5;
+    doc.setDrawColor(212,35,43); doc.setLineWidth(0.8); doc.line(L,y,Rt,y); y+=8;
+    const tid=f.tid?f.tid+(f.bil?(f.bil==="med"?" · med bärgningsbil":" · arbetstid"):""):"";
+    const rows=[["Utfört arbete",(f.jobb||[]).join(", ")],["Tid",tid],["Kund",f.kund],["Telefon",f.tel],["Regnummer",f.regnr],
+      ["Plats / sträcka",f.plats],["Anteckning",f.text],["Pris exkl. moms",f.pris?Number(String(f.pris).replace(",",".")).toLocaleString("sv-SE")+" kr":""],["Betalning",f.betalt||"Faktureras"]];
+    doc.setFontSize(11); doc.setLineWidth(0.2); doc.setDrawColor(200);
+    rows.filter(r=>r[1]).forEach(([k,v])=>{
+      const lines=doc.splitTextToSize(pdfText(v),W-52);
+      doc.setTextColor(90); doc.text(k,L,y); doc.setTextColor(0); doc.text(lines,L+52,y);
+      y+=lines.length*5+2.5; doc.line(L,y,Rt,y); y+=6;
+    });
+    if(f.sig){ y+=4; doc.setTextColor(0); doc.text("Kundens signatur",L,y); y+=3;
+      try{ doc.addImage(f.sig,"PNG",L,y,80,28); }catch(e){} y+=29; doc.setDrawColor(0); doc.line(L,y,L+80,y); }
+    doc.setFontSize(9); doc.setTextColor(110); doc.text("Willes Bilbärgning · Underlag för fakturering",L,285);
+  });
+  return doc;
+}
+async function printSlips(a){
+  if(!window.jspdf){ $("print").innerHTML=a.map(slip).join(""); setTimeout(()=>print(),300); return; }
+  const doc=makePDF(a), name=a.length===1?`foljesedel-${a[0].nr}.pdf`:`foljesedlar-${today()}.pdf`;
+  if(PREVIEW){ toast("PDF:en skapas i riktiga appen"); return; }
+  const file=new File([doc.output("blob")],name,{type:"application/pdf"});
+  try{ if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file],title:name}); return; } }catch(e){ if(e.name==="AbortError") return; }
+  const u=URL.createObjectURL(file), l=document.createElement("a"); l.href=u; l.download=name; document.body.appendChild(l); l.click(); l.remove(); setTimeout(()=>URL.revokeObjectURL(u),5000);
+}
 function printOne(id){ const f=load().find(x=>x.id===id); if(f) printSlips([f]); }
 function printOpen(){ const a=load().filter(f=>!f.fakturerad); a.length?printSlips(a):toast("Inga ej fakturerade"); }
 function exportCSV(){
