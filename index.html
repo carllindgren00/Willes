@@ -40,13 +40,22 @@
   .meta{display:flex;justify-content:space-between;align-items:center;gap:10px;color:var(--muted);font-size:15px}
   .meta b{color:var(--ink);font-size:20px;font-variant-numeric:tabular-nums}
   .meta input{width:auto}
-  .nrbox{display:flex;align-items:center;gap:8px;margin:0;color:var(--muted);font-size:15px}
+  .nrbox{white-space:nowrap;display:flex;align-items:center;gap:8px;margin:0;color:var(--muted);font-size:15px}
   .nrbox input{width:96px;font-weight:700;font-size:20px;font-variant-numeric:tabular-nums;padding:8px 10px}
   .nrbox input.warn{border-color:var(--red)}
   .two{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
   .sum{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
   .sum .calc{color:var(--muted);font-size:14px;font-variant-numeric:tabular-nums}
   .sum input{width:130px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+  .addrow{width:100%;margin-top:12px;border:2px dashed var(--red)!important;color:var(--red)!important;background:transparent!important;padding:13px!important}
+  .rad{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .rad:last-of-type{border-bottom:0}
+  .rad .info{flex:1;min-width:0;background:none;border:0;text-align:left;color:var(--ink);font:16px var(--font);padding:0}
+  .rad .info small{display:block;color:var(--muted);font-size:14px}
+  .rad .belopp{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .rad .del{border:0;background:var(--soft);color:var(--ink);width:32px;height:32px;border-radius:50%;font:700 14px var(--font);flex-shrink:0}
+  .total{display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;padding-top:10px;border-top:2px solid var(--ink);font-size:18px}
+  .total b{font-variant-numeric:tabular-nums}
   .danger{color:var(--red)!important;border-color:var(--red)!important}
 
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -155,10 +164,20 @@
     <div class="head"><h2>Tid</h2><button class="link" id="editTid" onclick="toggleEdit('tid')">Ändra</button></div>
     <div class="grid" id="tid" style="grid-template-columns:repeat(3,1fr)"></div>
     <div class="add"><input id="addTid" placeholder="T.ex. 5 tim eller 45 min"><button onclick="addVal('tid')">Lägg till</button></div>
+    <label for="egenTid">Annan tid</label>
+    <input id="egenTid" inputmode="decimal" placeholder="T.ex. 2,5 tim eller 45 min" oninput="egenTidInput()">
     <div class="sum">
       <div><b>Pris</b> <span class="muted">exkl. moms</span><div class="calc" id="calc"></div></div>
       <input id="pris" inputmode="decimal" placeholder="kr" oninput="prisTouched=true">
     </div>
+    <button type="button" class="btn addrow" onclick="addRad()">+ Lägg till en rad till</button>
+  </section>
+
+  <section class="card" id="raderCard" hidden>
+    <div class="head"><h2>På den här följesedeln</h2><span class="muted" id="raderAntal"></span></div>
+    <div id="rader"></div>
+    <div class="total"><span>Totalt exkl. moms</span><b id="total">0 kr</b></div>
+    <p class="muted" style="margin:8px 0 0">Tryck på en rad för att ändra den.</p>
   </section>
 
   <section class="card">
@@ -247,7 +266,7 @@ const DEFAULT = {
 };
 const $=id=>document.getElementById(id);
 let mem={list:[],val:null,set:null};
-let bil="med", prisTouched=false, delArmed=null;
+let bil="med", prisTouched=false, delArmed=null, rader=[];
 let sel={jobb:new Set(),tid:""}, editing=null, filter="open", sigDirty=false, editMode={jobb:false,tid:false};
 
 /* ---------- lagring ---------- */
@@ -271,7 +290,7 @@ function renderChips(type){
     b.classList.toggle("on",on && !editMode[type]);
     b.onclick=()=>{
       if(editMode[type]){ const all=vals(); all[type].splice(i,1); saveVals(all); sel.jobb.delete(t); if(sel.tid===t) sel.tid=""; renderChips(type); return; }
-      if(type==="jobb"){ sel.jobb.has(t)?sel.jobb.delete(t):sel.jobb.add(t); } else { sel.tid = sel.tid===t?"":t; }
+      if(type==="jobb"){ sel.jobb.has(t)?sel.jobb.delete(t):sel.jobb.add(t); } else { sel.tid = sel.tid===t?"":t; $("egenTid").value=""; }
       renderChips(type);
     };
     box.appendChild(b);
@@ -281,7 +300,7 @@ function renderChips(type){
 }
 function hours(t){ const m=String(t).replace(",",".").match(/([\d.]+)\s*(min|m|tim|t|h)?/i); if(!m) return 0; const n=parseFloat(m[1]); return /^m/i.test(m[2]||"")?n/60:n; }
 function rate(){ const st=settings(); return parseFloat(String(bil==="med"?st.rateMed:st.rateUtan).replace(",","."))||0; }
-function kr(n){ return Math.round(n).toLocaleString("sv-SE")+" kr"; }
+function kr(n){ return Math.round(n).toLocaleString("sv-SE").replace(/[\u00A0\u202F]/g," ")+" kr"; }
 function calcPris(){
   document.querySelectorAll("#bil .chip").forEach(b=>b.classList.toggle("on",b.dataset.v===bil));
   const h=hours(sel.tid), r=rate();
@@ -289,6 +308,30 @@ function calcPris(){
   if(!prisTouched) $("pris").value = sel.tid&&r ? String(Math.round(h*r)) : "";
 }
 function setBil(v){ bil=v; calcPris(); }
+function egenTidInput(){ let v=$("egenTid").value.trim(); if(/^[\d.,]+$/.test(v)) v+=" tim"; sel.tid=v; renderChips("tid"); }
+const num=p=>parseFloat(String(p??"").replace(/\s/g,"").replace(",","."))||0;
+function radOf(f){ return f.rader || ((f.jobb&&f.jobb.length)||f.tid ? [{jobb:f.jobb||[],tid:f.tid||"",bil:f.bil||"med",pris:f.pris||""}] : []); }
+function curRad(){ if(!sel.jobb.size && !sel.tid) return null; return {jobb:[...sel.jobb],tid:sel.tid,bil,pris:$("pris").value.trim()}; }
+function clearEditor(){ sel={jobb:new Set(),tid:""}; prisTouched=false; $("egenTid").value=""; renderChips("jobb"); renderChips("tid"); }
+function addRad(){ const r=curRad(); if(!r){ toast("Välj arbete eller tid först"); return; } rader.push(r); clearEditor(); renderRader(); toast("Rad tillagd, välj nästa"); window.scrollTo({top:0}); }
+function removeRad(i){ rader.splice(i,1); renderRader(); }
+function editRad(i){
+  const cur=curRad(); const r=rader.splice(i,1)[0]; if(cur) rader.push(cur);
+  sel={jobb:new Set(r.jobb),tid:r.tid}; bil=r.bil||"med";
+  const chip=vals().tid.includes(r.tid); $("egenTid").value=chip?"":r.tid;
+  prisTouched=true; renderChips("jobb"); renderChips("tid"); $("pris").value=r.pris; renderRader(); window.scrollTo({top:0});
+}
+const radTyp=b=>b==="med"?"Med bärgningsbil":"Arbetstid";
+function radTitel(r){ return r.jobb.length?r.jobb.join(", "):radTyp(r.bil); }
+function renderRader(){
+  $("raderCard").hidden=!rader.length;
+  $("raderAntal").textContent=rader.length+(rader.length===1?" rad":" rader");
+  $("rader").innerHTML=rader.map((r,i)=>`<div class="rad">
+    <button type="button" class="info" onclick="editRad(${i})">${esc(radTitel(r))}<small>${esc([r.tid,radTyp(r.bil)].filter(Boolean).join(" · "))}</small></button>
+    <span class="belopp">${r.pris?kr(num(r.pris)):"–"}</span>
+    <button type="button" class="del" aria-label="Ta bort rad" onclick="removeRad(${i})">✕</button></div>`).join("");
+  $("total").textContent=kr(rader.reduce((s,r)=>s+num(r.pris),0));
+}
 function checkNr(){ const n=parseInt($("nr").value), dup=load().some(f=>+f.nr===n && f.id!==editing); $("nr").classList.toggle("warn",dup); if(dup) toast("Nummer "+n+" finns redan"); }
 function loadSet(){ const st=settings(); $("rateMed").value=st.rateMed; $("rateUtan").value=st.rateUtan; $("startNr").value=st.start; $("nextShow").textContent=nextNr(); }
 function saveSet(){ const st={rateMed:$("rateMed").value.trim(),rateUtan:$("rateUtan").value.trim(),start:parseInt($("startNr").value)||1001}; mem.set=st; put(SETKEY,st); $("nextShow").textContent=nextNr(); }
@@ -320,33 +363,35 @@ $("more").addEventListener("toggle",()=>{ if($("more").open) requestAnimationFra
 
 /* ---------- formulär ---------- */
 const today=()=>{ const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); };
-const FIELDS=["kund","tel","regnr","plats","text","pris","betalt"];
+const FIELDS=["kund","tel","regnr","plats","text","betalt"];
 function resetForm(){
-  editing=null; sel={jobb:new Set(),tid:""}; bil="med"; prisTouched=false;
+  editing=null; sel={jobb:new Set(),tid:""}; bil="med"; prisTouched=false; rader=[]; renderRader(); $("egenTid").value="";
   FIELDS.forEach(i=>$(i).value=""); $("datum").value=today(); $("datum").dataset.auto="1"; $("nr").value=nextNr(); $("nr").classList.remove("warn");
   $("saveBtn").textContent="Spara följesedel"; $("more").open=false;
   renderChips("jobb"); renderChips("tid"); clearSig();
   $("kundlista").innerHTML=[...new Set(load().map(f=>f.kund).filter(Boolean))].map(n=>`<option value="${esc(n)}">`).join("");
 }
 function save(){
-  const d={jobb:[...sel.jobb],tid:sel.tid,bil,datum:$("datum").value||today()};
+  const cur=curRad(), rows=cur?[...rader,cur]:[...rader];
+  const d={rader:rows,jobb:[...new Set(rows.flatMap(r=>r.jobb))],datum:$("datum").value||today()};
+  const tot=rows.reduce((s,r)=>s+num(r.pris),0); d.pris=rows.some(r=>r.pris)?String(Math.round(tot)):"";
   const nr=parseInt($("nr").value);
   if(!nr){ toast("Skriv ett följesedelsnummer"); return; }
   if(load().some(f=>+f.nr===nr && f.id!==editing)){ toast("Nummer "+nr+" finns redan"); return; }
   d.nr=nr;
   FIELDS.forEach(i=>d[i]=$(i).value.trim()); d.regnr=d.regnr.toUpperCase();
-  if(!d.jobb.length && !d.text){ toast("Välj vad som gjordes eller skriv något"); return; }
+  if(!rows.length && !d.text){ toast("Välj vad som gjordes eller skriv något"); return; }
   const all=load(); let f;
-  if(editing){ f=all.find(x=>x.id===editing); Object.assign(f,d); if(sigDirty) f.sig=cv.toDataURL(); }
+  if(editing){ f=all.find(x=>x.id===editing); delete f.tid; delete f.bil; Object.assign(f,d); if(sigDirty) f.sig=cv.toDataURL(); }
   else { f={id:String(Date.now()),fakturerad:false,...d,sig:sigDirty?cv.toDataURL():""}; all.push(f); }
   all.sort((a,b)=>b.nr-a.nr); store(all); toast("Följesedel "+f.nr+" sparad"); resetForm(); window.scrollTo(0,0);
 }
 function edit(id){
   const f=load().find(x=>x.id===id); if(!f) return;
-  show("new"); editing=id; $("nr").value=f.nr; bil=f.bil||"med"; prisTouched=true; $("saveBtn").textContent="Spara ändringar";
-  sel={jobb:new Set(f.jobb||[]),tid:f.tid||""}; $("datum").value=f.datum;
-  FIELDS.forEach(i=>$(i).value=f[i]||""); renderChips("jobb"); renderChips("tid");
-  if(f.kund||f.regnr||f.tel||f.plats||f.pris||f.sig){ $("more").open=true;
+  show("new"); editing=id; $("nr").value=f.nr; $("saveBtn").textContent="Spara ändringar";
+  rader=radOf(f).map(r=>({...r,jobb:[...r.jobb]})); bil=(rader[0]&&rader[0].bil)||"med"; clearEditor(); renderRader(); $("datum").value=f.datum;
+  FIELDS.forEach(i=>$(i).value=f[i]||"");
+  if(f.kund||f.regnr||f.tel||f.plats||f.sig){ $("more").open=true;
     requestAnimationFrame(()=>{ sizeSig(); if(f.sig){ const im=new Image(); im.onload=()=>{const r=cv.getBoundingClientRect(); ctx.drawImage(im,0,0,r.width,r.height);}; im.src=f.sig; } }); }
 }
 
@@ -359,8 +404,8 @@ function renderList(){
   $("list").innerHTML=a.length?a.map(f=>`
     <div class="item">
       <div><div class="t">#${f.nr} · ${esc(f.kund||"Ingen kund angiven")}</div>
-      <div class="muted">${f.datum}${f.regnr?" · "+esc(f.regnr):""}${f.pris?" · "+esc(f.pris)+" kr":""}</div></div>
-      <div class="tags">${(f.jobb||[]).map(j=>`<span class="tag">${esc(j)}</span>`).join("")}${f.tid?`<span class="tag">${esc(f.tid)}</span>`:""}${f.fakturerad?'<span class="tag ok">Fakturerad</span>':""}</div>
+      <div class="muted">${f.datum}${f.regnr?" · "+esc(f.regnr):""}${f.pris?" · "+kr(num(f.pris)):""}</div></div>
+      <div class="tags">${radOf(f).map(r=>`<span class="tag">${esc(radTitel(r))}${r.tid?" · "+esc(r.tid):""}</span>`).join("")}${f.fakturerad?'<span class="tag ok">Fakturerad</span>':""}</div>
       ${f.text?`<div class="muted">${esc(f.text)}</div>`:""}
       <div class="acts">
         <button onclick="toggleFakt('${f.id}')">${f.fakturerad?"Ångra fakturerad":"Markera fakturerad"}</button>
@@ -382,7 +427,10 @@ const BILTXT={med:"Med bärgningsbil",utan:"Arbetstid"};
 function slip(f){
   const r=(k,v)=>v?`<tr><td>${k}</td><td>${esc(v).replace(/\n/g,"<br>")}</td></tr>`:"";
   return `<div class="pg"><div class="top"><img src="${$("logo").src}"><div style="text-align:right"><h1>Följesedel</h1><div>Nr <b>${f.nr}</b></div><div>${f.datum}</div></div></div>
-  <table>${r("Utfört arbete",(f.jobb||[]).join(", "))}${r("Tid",f.tid?f.tid+(f.bil?(f.bil==="med"?" · med bärgningsbil":" · arbetstid"):""):"")}${r("Kund",f.kund)}${r("Telefon",f.tel)}${r("Regnummer",f.regnr)}${r("Plats / sträcka",f.plats)}${r("Anteckning",f.text)}${r("Pris exkl. moms",f.pris?f.pris+" kr":"")}${r("Betalning",f.betalt||"Faktureras")}</table>
+  <table>${r("Kund",f.kund)}${r("Telefon",f.tel)}${r("Regnummer",f.regnr)}${r("Plats / sträcka",f.plats)}</table>
+  <table>${radOf(f).map(x=>`<tr><td>${esc(radTitel(x))}</td><td>${esc(x.tid)} · ${radTyp(x.bil)}</td><td style="text-align:right">${x.pris?kr(num(x.pris)):""}</td></tr>`).join("")}
+  <tr><td><b>Totalt exkl. moms</b></td><td></td><td style="text-align:right"><b>${f.pris?kr(num(f.pris)):""}</b></td></tr></table>
+  <table>${r("Anteckning",f.text)}${r("Betalning",f.betalt||"Faktureras")}</table>
   ${f.sig?`<p style="margin-top:20px">Kundens signatur</p><img class="sigimg" src="${f.sig}">`:""}
   <p style="margin-top:24px;color:#666;font-size:10pt">Willes Bilbärgning · Underlag för fakturering</p></div>`;
 }
@@ -399,16 +447,26 @@ function makePDF(a){
     doc.setFont("helvetica","normal"); doc.text(f.datum,Rt,y+22,{align:"right"});
     y+=Math.max(lh,24)+5;
     doc.setDrawColor(212,35,43); doc.setLineWidth(0.8); doc.line(L,y,Rt,y); y+=8;
-    const tid=f.tid?f.tid+(f.bil?(f.bil==="med"?" · med bärgningsbil":" · arbetstid"):""):"";
-    const rows=[["Utfört arbete",(f.jobb||[]).join(", ")],["Tid",tid],["Kund",f.kund],["Telefon",f.tel],["Regnummer",f.regnr],
-      ["Plats / sträcka",f.plats],["Anteckning",f.text],["Pris exkl. moms",f.pris?Number(String(f.pris).replace(",",".")).toLocaleString("sv-SE")+" kr":""],["Betalning",f.betalt||"Faktureras"]];
-    doc.setFontSize(11); doc.setLineWidth(0.2); doc.setDrawColor(200);
-    rows.filter(r=>r[1]).forEach(([k,v])=>{
-      const lines=doc.splitTextToSize(pdfText(v),W-52);
-      doc.setTextColor(90); doc.text(k,L,y); doc.setTextColor(0); doc.text(lines,L+52,y);
-      y+=lines.length*5+2.5; doc.line(L,y,Rt,y); y+=6;
-    });
-    if(f.sig){ y+=4; doc.setTextColor(0); doc.text("Kundens signatur",L,y); y+=3;
+    const room=h=>{ if(y+h>275){ doc.addPage(); y=20; } };
+    const info=rows=>{ doc.setFont("helvetica","normal"); doc.setFontSize(11); doc.setLineWidth(0.2); doc.setDrawColor(200);
+      rows.filter(r=>r[1]).forEach(([k,v])=>{ const lines=doc.splitTextToSize(pdfText(v),W-52); room(lines.length*5+8);
+        doc.setTextColor(90); doc.text(k,L,y); doc.setTextColor(0); doc.text(lines,L+52,y); y+=lines.length*5+2.5; doc.line(L,y,Rt,y); y+=6; }); };
+    info([["Kund",f.kund],["Telefon",f.tel],["Regnummer",f.regnr],["Plats / sträcka",f.plats]]);
+    const rr=radOf(f);
+    if(rr.length){
+      y+=3; room(20); const cT=L+84, cY=L+112;
+      doc.setFont("helvetica","bold"); doc.setFontSize(10); doc.setTextColor(90);
+      doc.text("Utfört arbete",L,y); doc.text("Tid",cT,y); doc.text("Typ",cY,y); doc.text("Belopp",Rt,y,{align:"right"});
+      y+=2.5; doc.setDrawColor(0); doc.setLineWidth(0.4); doc.line(L,y,Rt,y); y+=6;
+      doc.setFont("helvetica","normal"); doc.setFontSize(11); doc.setLineWidth(0.2); doc.setDrawColor(200);
+      rr.forEach(x=>{ const lines=doc.splitTextToSize(pdfText(radTitel(x)),cT-L-4); room(lines.length*5+8);
+        doc.setTextColor(0); doc.text(lines,L,y); doc.text(pdfText(x.tid||""),cT,y); doc.text(x.bil==="med"?"Bärgningsbil":"Arbetstid",cY,y);
+        if(x.pris) doc.text(kr(num(x.pris)),Rt,y,{align:"right"}); y+=lines.length*5+2.5; doc.line(L,y,Rt,y); y+=6; });
+      room(12); doc.setDrawColor(0); doc.setLineWidth(0.5); doc.line(L,y-4,Rt,y-4);
+      doc.setFont("helvetica","bold"); doc.text("Totalt exkl. moms",L,y+1); if(f.pris) doc.text(kr(num(f.pris)),Rt,y+1,{align:"right"}); y+=11;
+    }
+    info([["Anteckning",f.text],["Betalning",f.betalt||"Faktureras"]]);
+    if(f.sig){ room(40); y+=4; doc.setTextColor(0); doc.text("Kundens signatur",L,y); y+=3;
       try{ doc.addImage(f.sig,"PNG",L,y,80,28); }catch(e){} y+=29; doc.setDrawColor(0); doc.line(L,y,L+80,y); }
     doc.setFontSize(9); doc.setTextColor(110); doc.text("Willes Bilbärgning · Underlag för fakturering",L,285);
   });
@@ -427,10 +485,10 @@ function printOpen(){ const a=load().filter(f=>!f.fakturerad); a.length?printSli
 function exportCSV(){
   if(PREVIEW){ toast("Excel-filen laddas ner i riktiga appen"); return; }
   const a=load().filter(f=>!f.fakturerad); if(!a.length){ toast("Inga ej fakturerade"); return; }
-  a.forEach(f=>f.bilTxt=BILTXT[f.bil]||"");
-  const c=v=>`"${String(Array.isArray(v)?v.join(", "):(v??"")).replace(/"/g,'""')}"`;
-  const cols=["nr","datum","kund","tel","regnr","plats","jobb","tid","bilTxt","pris","betalt","text"];
-  const csv="﻿Nr;Datum;Kund;Telefon;Regnr;Plats;Arbete;Tid;Typ;Pris exkl moms;Betalning;Anteckning\r\n"+a.map(f=>cols.map(k=>c(f[k])).join(";")).join("\r\n");
+  const c=v=>`"${String(v??"").replace(/"/g,'""')}"`;
+  const lines=[]; a.forEach(f=>{ const rr=radOf(f); (rr.length?rr:[{jobb:[],tid:"",bil:"",pris:""}]).forEach(x=>lines.push(
+    [f.nr,f.datum,f.kund,f.tel,f.regnr,f.plats,x.jobb.join(", "),x.tid,x.bil?radTyp(x.bil):"",x.pris?String(num(x.pris)).replace(".",","):"",f.betalt||"Faktureras",f.text].map(c).join(";"))); });
+  const csv="\uFEFFNr;Datum;Kund;Telefon;Regnr;Plats;Arbete;Tid;Typ;Belopp exkl moms;Betalning;Anteckning\r\n"+lines.join("\r\n");
   const u=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})), l=document.createElement("a");
   l.href=u; l.download=`fakturaunderlag-${today()}.csv`; l.click(); setTimeout(()=>URL.revokeObjectURL(u),1000);
 }
@@ -447,7 +505,8 @@ function show(v){
 
 if(PREVIEW && !load().length){
   store([
-    {id:"3",nr:1003,fakturerad:false,datum:"2026-10-26",kund:"Exempel: Perstorp Åkeri AB",regnr:"ABC123",plats:"Avfart 30 → verkstad Perstorp",jobb:["Bärgning","Vinsch / dike"],tid:"2 tim",bil:"med",pris:"1900",text:"Lastbil i diket",sig:""},
+    {id:"3",nr:1003,fakturerad:false,datum:"2026-10-26",kund:"Exempel: Perstorp Åkeri AB",regnr:"ABC123",plats:"Avfart 30 → verkstad Perstorp",jobb:["Vinsch / dike","Bärgning","Däckbyte"],
+      rader:[{jobb:["Vinsch / dike"],tid:"2 tim",bil:"med",pris:"1900"},{jobb:["Bärgning"],tid:"1,5 tim",bil:"med",pris:"1425"},{jobb:["Däckbyte"],tid:"4 tim",bil:"utan",pris:"2600"}],pris:"5925",text:"Lastbil i diket",sig:""},
     {id:"2",nr:1002,fakturerad:false,datum:"2026-10-25",kund:"Exempel: Anna Svensson",regnr:"XYZ789",jobb:["Starthjälp"],tid:"30 min",bil:"med",pris:"475",betalt:"Swish",text:"",sig:""},
     {id:"1",nr:1001,fakturerad:true,datum:"2026-10-24",kund:"Exempel: Bilverkstan",regnr:"DEF456",jobb:["Transport"],tid:"1,5 tim",bil:"med",pris:"1425",text:"",sig:""}
   ]);
