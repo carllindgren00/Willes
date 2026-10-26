@@ -156,6 +156,8 @@
     <div class="head"><h2>Vad gjordes?</h2><button class="link" id="editJobb" onclick="toggleEdit('jobb')">Ändra</button></div>
     <div class="grid" id="jobb"></div>
     <div class="add"><input id="addJobb" placeholder="Nytt snabbval, t.ex. Hjulbyte"><button onclick="addVal('jobb')">Lägg till</button></div>
+    <label for="fritext">Eller skriv själv</label>
+    <input id="fritext" placeholder="T.ex. bytt startbatteri" autocomplete="off">
   </section>
 
   <section class="card">
@@ -313,18 +315,19 @@ function setBil(v){ bil=v; calcPris(); }
 function egenTidInput(){ let v=$("egenTid").value.trim(); if(/^[\d.,]+$/.test(v)) v+=" tim"; sel.tid=v; renderChips("tid"); }
 const num=p=>parseFloat(String(p??"").replace(/\s/g,"").replace(",","."))||0;
 function radOf(f){ return f.rader || ((f.jobb&&f.jobb.length)||f.tid ? [{jobb:f.jobb||[],tid:f.tid||"",bil:f.bil||"med",pris:f.pris||""}] : []); }
-function curRad(){ if(!sel.jobb.size && !sel.tid) return null; return {jobb:[...sel.jobb],tid:sel.tid,bil,pris:$("pris").value.trim()}; }
-function clearEditor(){ sel={jobb:new Set(),tid:""}; prisTouched=false; $("egenTid").value=""; renderChips("jobb"); renderChips("tid"); }
+function curRad(){ const fx=$("fritext").value.trim(); if(!sel.jobb.size && !sel.tid && !fx) return null; return {jobb:[...sel.jobb],fritext:fx,tid:sel.tid,bil,pris:$("pris").value.trim()}; }
+function clearEditor(){ sel={jobb:new Set(),tid:""}; prisTouched=false; $("egenTid").value=""; $("fritext").value=""; renderChips("jobb"); renderChips("tid"); }
 function addRad(){ const r=curRad(); if(!r){ toast("Välj arbete eller tid först"); return; } rader.push(r); clearEditor(); renderRader(); toast("Rad tillagd, välj nästa"); window.scrollTo({top:0}); }
 function removeRad(i){ rader.splice(i,1); renderRader(); }
 function editRad(i){
   const cur=curRad(); const r=rader.splice(i,1)[0]; if(cur) rader.push(cur);
-  sel={jobb:new Set(r.jobb),tid:r.tid}; bil=r.bil||"med";
+  sel={jobb:new Set(r.jobb),tid:r.tid}; bil=r.bil||"med"; $("fritext").value=r.fritext||"";
   const chip=vals().tid.includes(r.tid); $("egenTid").value=chip?"":r.tid;
   prisTouched=true; renderChips("jobb"); renderChips("tid"); $("pris").value=r.pris; renderRader(); window.scrollTo({top:0});
 }
 const radTyp=b=>b==="med"?"Med bärgningsbil":"Arbetstid";
-function radTitel(r){ return r.jobb.length?r.jobb.join(", "):radTyp(r.bil); }
+function radArbete(r){ return [...r.jobb, r.fritext].filter(Boolean).join(", "); }
+function radTitel(r){ return radArbete(r)||radTyp(r.bil); }
 function renderRader(){
   $("raderCard").hidden=!rader.length;
   $("raderAntal").textContent=rader.length+(rader.length===1?" rad":" rader");
@@ -402,7 +405,7 @@ function setFilter(v){ filter=v; $("fOpen").style.borderColor=v==="open"?"var(--
 function renderList(){
   const q=$("sok").value.toLowerCase(); let a=load();
   if(filter==="open") a=a.filter(f=>!f.fakturerad);
-  if(q) a=a.filter(f=>[f.nr,f.kund,f.regnr,f.plats,f.text,(f.jobb||[]).join(" ")].join(" ").toLowerCase().includes(q));
+  if(q) a=a.filter(f=>[f.nr,f.kund,f.regnr,f.plats,f.text,radOf(f).map(radArbete).join(" ")].join(" ").toLowerCase().includes(q));
   $("list").innerHTML=a.length?a.map(f=>`
     <div class="item">
       <div><div class="t">#${f.nr} · ${esc(f.kund||"Ingen kund angiven")}</div>
@@ -489,7 +492,7 @@ function exportCSV(){
   const a=load().filter(f=>!f.fakturerad); if(!a.length){ toast("Inga ej fakturerade"); return; }
   const c=v=>`"${String(v??"").replace(/"/g,'""')}"`;
   const lines=[]; a.forEach(f=>{ const rr=radOf(f); (rr.length?rr:[{jobb:[],tid:"",bil:"",pris:""}]).forEach(x=>lines.push(
-    [f.nr,f.datum,f.kund,f.tel,f.regnr,f.plats,x.jobb.join(", "),x.tid,x.bil?radTyp(x.bil):"",x.pris?String(num(x.pris)).replace(".",","):"",f.betalt||"Faktureras",f.text].map(c).join(";"))); });
+    [f.nr,f.datum,f.kund,f.tel,f.regnr,f.plats,radArbete(x),x.tid,x.bil?radTyp(x.bil):"",x.pris?String(num(x.pris)).replace(".",","):"",f.betalt||"Faktureras",f.text].map(c).join(";"))); });
   const csv="\uFEFFNr;Datum;Kund;Telefon;Regnr;Plats;Arbete;Tid;Typ;Belopp exkl moms;Betalning;Anteckning\r\n"+lines.join("\r\n");
   const u=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})), l=document.createElement("a");
   l.href=u; l.download=`fakturaunderlag-${today()}.csv`; l.click(); setTimeout(()=>URL.revokeObjectURL(u),1000);
